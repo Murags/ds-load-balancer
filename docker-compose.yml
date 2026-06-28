@@ -1,0 +1,27 @@
+# Deploys the load balancer on net1. The server replicas are NOT defined here —
+# the load balancer spawns and maintains them dynamically through the mounted
+# docker socket (see Task 3). Build the server image first (`make build`) so the
+# host daemon can launch it.
+services:
+  loadbalancer:
+    build: ./loadbalancer
+    image: ds-loadbalancer:latest
+    container_name: loadbalancer
+    privileged: true                       # required to drive the host docker daemon
+    ports:
+      - "5000:5000"                         # only the LB is exposed to clients
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      N: "3"                                # number of replicas to maintain
+      SERVER_IMAGE: "ds-server:latest"      # image used for spawned replicas
+      DOCKER_NETWORK: "net1"                # network spawned replicas join
+    networks:
+      net1:
+        aliases:
+          - loadbalancer
+
+networks:
+  net1:
+    name: net1                              # explicit name so `docker run --network net1` matches
+    driver: bridge

@@ -1,0 +1,13 @@
+[project]
+name = "ds-lb-server"
+version = "0.1.0"
+description = "Task 1: minimal web server (/home, /heartbeat) for the load balancer assignment"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[tool.uv]
+# Application, not a library — don't try to build/install it as a package.
+package = false
