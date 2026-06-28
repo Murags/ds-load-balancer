@@ -12,3 +12,13 @@ dependencies = [
 [tool.uv]
 # Application, not a library — don't try to build/install it as a package.
 package = false
+
+[dependency-groups]
+# Dev-only; excluded from the Docker image via `uv sync --no-dev`.
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+# Make the `hashing` package importable the same way it is inside the container
+# (where loadbalancer/ contents sit at /app), and point at the repo's tests/.
+pythonpath = ["."]
+testpaths = ["../tests"]
