@@ -18,6 +18,7 @@ services:
       N: "3"                                # number of replicas to maintain
       SERVER_IMAGE: "ds-server:latest"      # image used for spawned replicas
       DOCKER_NETWORK: "net1"                # network spawned replicas join
+      HASH_VARIANT: "${HASH_VARIANT:-default}"  # "spread" for Task 4 / A-4
     networks:
       net1:
         aliases:
