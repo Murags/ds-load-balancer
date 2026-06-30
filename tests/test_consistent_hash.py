@@ -65,6 +65,30 @@ def test_duplicate_add_rejected():
         ch.add_server("dup")
 
 
+def test_invalid_construction_params():
+    with pytest.raises(ValueError):
+        ConsistentHashMap(num_slots=0)
+    with pytest.raises(ValueError):
+        ConsistentHashMap(virtuals_per_server=0)
+    with pytest.raises(ValueError):
+        ConsistentHashMap(probing="cubic")
+
+
+def test_add_server_rolls_back_on_full_ring():
+    # 10 slots, 9 virtuals: the first server fits, the second cannot.
+    ch = ConsistentHashMap(num_slots=10, virtuals_per_server=9)
+    ch.add_server("S1")
+    occupied_before = list(ch._occupied)
+    with pytest.raises(RuntimeError):
+        ch.add_server("S2")
+    # The failed add must leave the map exactly as it was.
+    assert "S2" not in ch
+    assert ch.servers == ["S1"]
+    assert ch._occupied == occupied_before
+    assert all(s == "S1" for s in ch._slots if s is not None)
+    assert ch._next_id == 2  # the failed add did not consume an id
+
+
 # --------------------------------------------------------------------------- #
 # Lookup
 # --------------------------------------------------------------------------- #

@@ -48,6 +48,10 @@ class ConsistentHashMap:
     ) -> None:
         if probing not in ("linear", "quadratic"):
             raise ValueError("probing must be 'linear' or 'quadratic'")
+        if num_slots < 1:
+            raise ValueError("num_slots must be >= 1")
+        if virtuals_per_server < 1:
+            raise ValueError("virtuals_per_server must be >= 1")
         self.M = num_slots
         self.K = virtuals_per_server
         self._request_hash = request_hash
@@ -92,17 +96,28 @@ class ConsistentHashMap:
             raise ValueError(f"server {name!r} already present")
 
         i = self._next_id
-        self._next_id += 1
-        self._server_ids[name] = i
-
         slots: list[int] = []
-        for j in range(self.K):
-            base = self._virtual_hash(i, j) % self.M
-            slot = self._probe_slot(base)
-            self._slots[slot] = name
+        try:
+            # Claim slots one by one. We mark `_slots` during the loop so a
+            # server's own virtual nodes don't collide with each other, but we
+            # defer every other state change until all K nodes are placed.
+            for j in range(self.K):
+                base = self._virtual_hash(i, j) % self.M
+                slot = self._probe_slot(base)
+                self._slots[slot] = name
+                slots.append(slot)
+        except Exception:
+            # Roll back the only state mutated so far, leaving the map intact.
+            for slot in slots:
+                self._slots[slot] = None
+            raise
+
+        # All nodes placed — commit the remaining state atomically.
+        for slot in slots:
             bisect.insort(self._occupied, slot)
-            slots.append(slot)
+        self._server_ids[name] = i
         self._server_slots[name] = slots
+        self._next_id += 1  # only consume an id on success
         return i
 
     def remove_server(self, name: str) -> None:
@@ -135,9 +150,11 @@ class ConsistentHashMap:
     def _probe_slot(self, base: int) -> int:
         """Find the next free slot at/after `base` using the configured probing.
 
-        Linear probing visits every slot and is guaranteed to find a free one if
-        the ring isn't full. Quadratic probing reduces clustering but may not
-        visit every slot, so we cap the search at M steps and raise if full.
+        Linear probing visits every slot, so it finds a free one whenever the
+        ring isn't full. Quadratic probing reduces clustering but may not visit
+        every slot, so it can exhaust the M-step budget even when free slots
+        remain. Either way the search is capped at M steps and raises if no free
+        slot is found within that bound.
         """
         for step in range(self.M):
             if self._probing == "linear":
@@ -146,4 +163,8 @@ class ConsistentHashMap:
                 slot = (base + step * step) % self.M
             if self._slots[slot] is None:
                 return slot
-        raise RuntimeError("consistent hash ring is full — cannot place virtual node")
+        raise RuntimeError(
+            f"no free slot found within {self.M} probes from base {base} "
+            f"using {self._probing} probing "
+            f"(ring full, or quadratic probing did not reach a free slot)"
+        )
