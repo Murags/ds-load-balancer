@@ -77,8 +77,16 @@ Collisions are resolved with linear/quadratic probing.
 ```bash
 make build     # build server + load balancer images
 make up        # deploy the full stack via docker-compose
-make down      # tear down
+make down      # tear down (also removes spawned replicas)
 make logs      # follow load balancer logs
+```
+
+The load balancer is exposed on host port **5000** by default (per the
+assignment). On hosts where 5000 is taken (e.g. macOS AirPlay Receiver),
+override the host port:
+
+```bash
+LB_PORT=5050 make up      # LB reachable at http://localhost:5050
 ```
 
 ## Analysis (Task 4)
