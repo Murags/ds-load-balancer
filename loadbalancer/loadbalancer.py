@@ -17,7 +17,7 @@ import asyncio
 import os
 import random
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import httpx
 from fastapi import FastAPI, Request
@@ -84,7 +84,7 @@ async def _is_alive(hostname: str, attempts: int = 2) -> bool:
 
 
 async def _wait_healthy(hostname: str) -> bool:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     deadline = loop.time() + READINESS_TIMEOUT
     while loop.time() < deadline:
         if await _is_alive(hostname, attempts=1):
@@ -94,11 +94,22 @@ async def _wait_healthy(hostname: str) -> bool:
 
 
 async def _spawn_and_register(hostname: str, wait: bool = True) -> None:
-    """Spawn a replica, register it on the ring, optionally await readiness."""
+    """Spawn a replica, register it on the ring, and await readiness.
+
+    If the replica never becomes healthy within the readiness timeout it is
+    rolled back (removed from the ring and torn down) and a DockerError is
+    raised — otherwise a dead replica would linger on the ring and serve 502s.
+    """
     await dm.spawn_server(hostname, SERVER_IMAGE, DOCKER_NETWORK)
     ring.add_server(hostname)
-    if wait:
-        await _wait_healthy(hostname)
+    if wait and not await _wait_healthy(hostname):
+        ring.remove_server(hostname)
+        with suppress(dm.DockerError):
+            await dm.remove_server(hostname)
+        raise dm.DockerError(
+            f"replica {hostname!r} did not become healthy within "
+            f"{READINESS_TIMEOUT}s"
+        )
 
 
 async def _ensure_n_replicas() -> None:
@@ -116,7 +127,11 @@ async def _ensure_n_replicas() -> None:
 # Health / failure recovery
 # --------------------------------------------------------------------------- #
 async def _recover_dead() -> None:
-    """Detect dead replicas and respawn replacements to keep N alive."""
+    """Detect dead replicas and respawn replacements up to the desired count.
+
+    The target is `_target_n` (the live desired count, which tracks /add and
+    /rm), not the static env `N`.
+    """
     dead = [name for name in ring.servers if not await _is_alive(name)]
     if not dead:
         return
@@ -170,6 +185,8 @@ async def lifespan(app: FastAPI):
     finally:
         if _health_task:
             _health_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await _health_task
         await _client.aclose()
 
 
@@ -214,8 +231,21 @@ async def add(request: Request) -> JSONResponse:
             r = _random_hostname()
             if r not in ring and r not in chosen:
                 chosen.append(r)
-        for h in chosen:
-            await _spawn_and_register(h)
+
+        # Add atomically: if any spawn fails, roll back the ones added here.
+        added: list[str] = []
+        try:
+            for h in chosen:
+                await _spawn_and_register(h)
+                added.append(h)
+        except dm.DockerError as exc:
+            for h in added:
+                if h in ring:
+                    ring.remove_server(h)
+                with suppress(dm.DockerError):
+                    await dm.remove_server(h)
+            return _error(f"failed to add replicas: {exc}", status_code=500)
+
         _target_n = len(ring)
         return _ok(ring.servers)
 
@@ -237,6 +267,8 @@ async def remove(request: Request) -> JSONResponse:
         return _error("'hostnames' must be a list")
     if len(hostnames) > n:
         return _error("Length of hostname list is more than removable instances")
+    if len(set(hostnames)) != len(hostnames):
+        return _error("Duplicate hostnames in payload")
 
     async with _lock:
         if n > len(ring):
@@ -248,13 +280,19 @@ async def remove(request: Request) -> JSONResponse:
         # Fill the remainder with randomly-chosen survivors.
         others = [s for s in ring.servers if s not in chosen]
         chosen += random.sample(others, n - len(chosen))
+        failed: list[str] = []
         for h in chosen:
             ring.remove_server(h)
             try:
                 await dm.remove_server(h)
             except dm.DockerError:
-                pass
+                failed.append(h)  # removed from the pool but container lingers
         _target_n = len(ring)
+        if failed:
+            return _error(
+                f"scaled down, but failed to stop container(s): {failed}",
+                status_code=500,
+            )
         return _ok(ring.servers)
 
 
