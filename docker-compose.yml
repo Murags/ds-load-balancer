@@ -9,7 +9,9 @@ services:
     container_name: loadbalancer
     privileged: true                       # required to drive the host docker daemon
     ports:
-      - "5000:5000"                         # only the LB is exposed to clients
+      # Host port defaults to 5000 (per the assignment); override with LB_PORT
+      # on hosts where 5000 is taken, e.g. macOS AirPlay: `LB_PORT=5050 make up`.
+      - "${LB_PORT:-5000}:5000"             # only the LB is exposed to clients
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

@@ -1,11 +1,10 @@
 # Task 2/3: load balancer image
 FROM python:3.12-slim
 
-# Docker CLI — the load balancer spawns/removes server containers through the
-# host's docker daemon (socket is mounted in docker-compose.yml).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends docker.io ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Docker CLI only (no daemon) — the load balancer spawns/removes server
+# containers through the host's docker daemon via the mounted socket, so it
+# just needs the client binary. Copied from the official docker image.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # uv binary (pinned to match the version that generated uv.lock)
 COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /bin/
