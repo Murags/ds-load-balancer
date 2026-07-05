@@ -29,11 +29,13 @@ spawning new server containers automatically when one fails.
 ├── server/                 # Task 1: minimal web server
 │   ├── server.py
 │   ├── Dockerfile
-│   └── requirements.txt
+│   ├── pyproject.toml
+│   └── uv.lock
 ├── loadbalancer/           # Task 3: load balancer service
 │   ├── loadbalancer.py
 │   ├── Dockerfile
-│   ├── requirements.txt
+│   ├── pyproject.toml
+│   ├── uv.lock
 │   └── hashing/            # Task 2: consistent hashing
 │       ├── __init__.py
 │       └── consistent_hash.py
@@ -224,16 +226,19 @@ polynomials do not, which is exactly what A-4 is designed to reveal.
 Unit/endpoint tests run without a docker daemon (the docker layer is mocked):
 
 ```bash
-cd loadbalancer && uv run pytest -q      # 30 tests
+cd loadbalancer && uv run pytest -q      # 35 tests
 ```
 
 - `tests/test_consistent_hash.py` (17): placement, virtual nodes, collision
   probing (linear + quadratic), clockwise lookup/wrap-around, removal &
   re-routing, distribution sanity, custom-hash injection, param validation,
   atomic `add_server` rollback.
-- `tests/test_loadbalancer.py` (13): `/rep`, `/add`, `/rm` validation and error
+- `tests/test_loadbalancer.py` (15): `/rep`, `/add`, `/rm` validation and error
   paths, plus routing (unknown path → 400, successful proxy), with the docker
-  manager and health probing mocked via FastAPI's `TestClient`.
+  manager and health probing mocked via FastAPI's `TestClient`; hash-variant
+  selection validation.
+- `tests/test_analysis_loadgen.py` (3): robust parsing and retry behavior for
+  transient `/rep` responses during analysis runs.
 
 End-to-end behaviour (real containers: bootstrap, scaling, routing, kill →
 respawn) is verified live by the Task 4 analysis run above.
