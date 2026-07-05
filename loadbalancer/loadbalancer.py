@@ -25,17 +25,37 @@ from fastapi.responses import JSONResponse, Response
 
 import docker_manager as dm
 from docker_manager import SERVER_PORT
-from hashing import ConsistentHashMap
+from hashing import (
+    ConsistentHashMap,
+    spread_request_hash,
+    spread_virtual_hash,
+)
 
 N = int(os.environ.get("N", "3"))
 SERVER_IMAGE = os.environ.get("SERVER_IMAGE", "ds-server:latest")
 DOCKER_NETWORK = os.environ.get("DOCKER_NETWORK", "net1")
 HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "5"))
 READINESS_TIMEOUT = float(os.environ.get("READINESS_TIMEOUT", "20"))
+# Hash variant: "default" uses the spec polynomials; "spread" uses the better-
+# distributing functions (Task 4 / A-4).
+HASH_VARIANT = os.environ.get("HASH_VARIANT", "default").strip().lower()
+
+
+def _make_ring() -> ConsistentHashMap:
+    if HASH_VARIANT == "spread":
+        return ConsistentHashMap(
+            request_hash=spread_request_hash, virtual_hash=spread_virtual_hash
+        )
+    if HASH_VARIANT == "default":
+        return ConsistentHashMap()
+    raise ValueError(
+        f"unsupported HASH_VARIANT={HASH_VARIANT!r}; expected 'default' or 'spread'"
+    )
+
 
 # Shared state. `_lock` guards every mutation of the ring + docker topology so
 # the /add, /rm endpoints and the health loop never race each other.
-ring = ConsistentHashMap()
+ring = _make_ring()
 # Desired replica count to maintain on failure. Starts at N, then tracks the
 # live count as /add and /rm scale the pool up and down.
 _target_n = N

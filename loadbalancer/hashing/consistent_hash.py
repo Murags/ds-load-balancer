@@ -35,6 +35,36 @@ def default_virtual_hash(i: int, j: int) -> int:
     return i * i + j * j + 2 * j + 25
 
 
+# --------------------------------------------------------------------------- #
+# A-4: alternative, better-distributing hash functions.
+#
+# The default polynomials keep all virtual-node positions in a tiny band (≈26-
+# 114 for ids 1-3), so one server owns the huge empty arc and hoards ~85% of
+# the load. These use Knuth-style multiplicative mixing with avalanche, so
+# positions scatter across the whole ring regardless of how small i and j are.
+# --------------------------------------------------------------------------- #
+_MASK = 0xFFFFFFFF
+_KNUTH = 2654435761  # 2^32 * (golden ratio - 1); classic multiplicative constant
+
+
+def spread_request_hash(i: int) -> int:
+    """Better-distributed request hash (A-4)."""
+    x = (i * _KNUTH) & _MASK
+    x ^= x >> 15
+    x = (x * 0x2C1B3C6D) & _MASK
+    x ^= x >> 12
+    return x & _MASK
+
+
+def spread_virtual_hash(i: int, j: int) -> int:
+    """Better-distributed virtual-node hash (A-4) mixing server and replica ids."""
+    x = ((i * 0x9E3779B1) ^ (j * 0x85EBCA77)) & _MASK
+    x ^= x >> 13
+    x = (x * 0xC2B2AE35) & _MASK
+    x ^= x >> 16
+    return x & _MASK
+
+
 class ConsistentHashMap:
     """A consistent hash ring with virtual nodes and collision probing."""
 

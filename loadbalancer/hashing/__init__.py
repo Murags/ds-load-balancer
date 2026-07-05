@@ -3,10 +3,14 @@ from .consistent_hash import (
     ConsistentHashMap,
     default_request_hash,
     default_virtual_hash,
+    spread_request_hash,
+    spread_virtual_hash,
 )
 
 __all__ = [
     "ConsistentHashMap",
     "default_request_hash",
     "default_virtual_hash",
+    "spread_request_hash",
+    "spread_virtual_hash",
 ]

@@ -6,10 +6,8 @@ __pycache__/
 venv/
 env/
 
-# Analysis outputs
-analysis/results/
-analysis/*.png
-*.csv
+# Analysis: figures (analysis/figures/) and results/summary.json are committed
+# as part of the Task 4 report.
 
 # OS / editor
 .DS_Store
