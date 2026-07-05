@@ -156,3 +156,15 @@ def test_route_proxies_success(client, monkeypatch):
     r = client.get("/home")
     assert r.status_code == 200
     assert r.json()["status"] == "successful"
+
+
+def test_hash_variant_rejects_unknown_value(monkeypatch):
+    monkeypatch.setattr(lb, "HASH_VARIANT", "sperad")
+    with pytest.raises(ValueError, match="unsupported HASH_VARIANT"):
+        lb._make_ring()
+
+
+def test_hash_variant_accepts_spread(monkeypatch):
+    monkeypatch.setattr(lb, "HASH_VARIANT", "spread")
+    ring = lb._make_ring()
+    assert isinstance(ring, lb.ConsistentHashMap)

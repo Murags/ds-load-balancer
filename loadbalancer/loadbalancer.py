@@ -38,7 +38,7 @@ HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "5"))
 READINESS_TIMEOUT = float(os.environ.get("READINESS_TIMEOUT", "20"))
 # Hash variant: "default" uses the spec polynomials; "spread" uses the better-
 # distributing functions (Task 4 / A-4).
-HASH_VARIANT = os.environ.get("HASH_VARIANT", "default")
+HASH_VARIANT = os.environ.get("HASH_VARIANT", "default").strip().lower()
 
 
 def _make_ring() -> ConsistentHashMap:
@@ -46,7 +46,11 @@ def _make_ring() -> ConsistentHashMap:
         return ConsistentHashMap(
             request_hash=spread_request_hash, virtual_hash=spread_virtual_hash
         )
-    return ConsistentHashMap()
+    if HASH_VARIANT == "default":
+        return ConsistentHashMap()
+    raise ValueError(
+        f"unsupported HASH_VARIANT={HASH_VARIANT!r}; expected 'default' or 'spread'"
+    )
 
 
 # Shared state. `_lock` guards every mutation of the ring + docker topology so

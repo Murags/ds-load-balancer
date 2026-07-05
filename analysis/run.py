@@ -68,7 +68,7 @@ def _wait_healthy(timeout: float = 60.0) -> None:
                 # confirm routing actually works
                 if httpx.get(f"{BASE}/home", timeout=3.0).status_code == 200:
                     return
-        except httpx.HTTPError:
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
             pass
         time.sleep(1.0)
     raise RuntimeError("stack did not become healthy in time")

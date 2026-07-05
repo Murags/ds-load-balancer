@@ -19,6 +19,14 @@ def _parse_server(message: str) -> str | None:
     return None
 
 
+def _replicas_from_response(response: httpx.Response) -> list[str]:
+    response.raise_for_status()
+    replicas = response.json()["message"]["replicas"]
+    if not isinstance(replicas, list) or not all(isinstance(r, str) for r in replicas):
+        raise ValueError("/rep response did not contain a replica list")
+    return replicas
+
+
 async def fire_requests(
     base_url: str, total: int, concurrency: int
 ) -> tuple[Counter, int]:
@@ -48,7 +56,11 @@ async def fire_requests(
                 if r.status_code != 200:
                     errors += 1
                     return
-                server = _parse_server(r.json().get("message", ""))
+                try:
+                    server = _parse_server(r.json().get("message", ""))
+                except (ValueError, TypeError):
+                    errors += 1
+                    return
                 if server is None:
                     errors += 1
                 else:
@@ -65,8 +77,8 @@ async def _get_replicas_retry(client: httpx.AsyncClient, base_url: str) -> list[
     for attempt in range(10):
         try:
             r = await client.get(f"{base_url}/rep")
-            return r.json()["message"]["replicas"]
-        except httpx.HTTPError as exc:
+            return _replicas_from_response(r)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
             last = exc
             await asyncio.sleep(0.5 * (attempt + 1))
     raise RuntimeError(f"/rep unreachable after retries: {last}")
