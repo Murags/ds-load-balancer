@@ -41,7 +41,7 @@ async def spawn_server(hostname: str, image: str, network: str) -> str:
         "-d",
         "--name", hostname,
         "--network", network,
-        "--network-alias", hostname,
+        "--network-alias", hostname,  # lets other containers resolve this replica by name via docker DNS
         "--label", SERVER_LABEL,
         "-e", f"SERVER_ID={hostname}",
         image,
@@ -54,7 +54,7 @@ async def spawn_server(hostname: str, image: str, network: str) -> str:
 async def remove_server(hostname: str) -> None:
     """Force-remove a server container. Missing containers are ignored."""
     code, _out, err = await _run("rm", "-f", hostname)
-    if code != 0 and "No such container" not in err:
+    if code != 0 and "No such container" not in err:  # "already gone" isn't a real failure
         raise DockerError(f"failed to remove {hostname!r}: {err}")
 
 
@@ -65,4 +65,4 @@ async def list_servers() -> list[str]:
     )
     if code != 0:
         raise DockerError(f"failed to list servers: {err}")
-    return [name for name in out.splitlines() if name]
+    return [name for name in out.splitlines() if name]  # drop trailing empty line when there are no matches
