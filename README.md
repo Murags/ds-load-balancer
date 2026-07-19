@@ -4,6 +4,13 @@ ICS 4104: Distributed Systems - Assignment 1
 
 A load balancer that asynchronously distributes client requests across `N` replicated web server containers using **consistent hashing**, running inside a Docker network. The load balancer maintains `N` healthy replicas at all times, spawning new server containers automatically when one fails. 
 
+| Student                  | Admission No. |
+|--------------------------|---------------|
+| Jonyo Janny              | 166885        |
+| Ogutu Cindy Atieno       | 158842        |
+| Mukoma Dennis Murage     | 139360        |
+| Kemoi Kristina Chebet    | 168652        |
+
 ## Architecture 
 
 ``` 
