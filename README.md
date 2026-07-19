@@ -1,54 +1,51 @@
-# Customizable Load Balancer
+# Customizable Load Balancer 
 
-ICS 4104: Distributed Systems — Assignment 1
+ICS 4104: Distributed Systems - Assignment 1 
 
-A load balancer that asynchronously distributes client requests across `N`
-replicated web server containers using **consistent hashing**, running inside a
-Docker network. The load balancer maintains `N` healthy replicas at all times,
-spawning new server containers automatically when one fails.
+A load balancer that asynchronously distributes client requests across `N` replicated web server containers using **consistent hashing**, running inside a Docker network. The load balancer maintains `N` healthy replicas at all times, spawning new server containers automatically when one fails. 
 
-## Architecture
+## Architecture 
 
-```
-                 Docker network: net1
-  ┌──────────────────────────────────────────────┐
-  │  Server 1   Server 2   Server 3  ...           │   Async
-  │     ▲          ▲          ▲                     │   requests
-  │     └──────────┼──────────┘                     │  ◄────────  Client 1..N
-  │          ┌─────┴──────┐                         │
-  │          │ LoadBalancer│  port 5000:5000        │
-  │          │   (N = 3)   │                         │
-  │          └─────────────┘                         │
-  └──────────────────────────────────────────────┘
-```
+``` 
+                 Docker network: net1 
+  ┌──────────────────────────────────────────────┐ 
+  │  Server 1   Server 2   Server 3  ...         │  Async 
+  │     ▲          ▲          ▲                  │  requests 
+  │     └──────────┼──────────┘                  │  ◄────────  Client 1..N 
+  │          ┌─────┴──────┐                      │ 
+  │          │ LoadBalancer│  port 5000:5000     │ 
+  │          │   (N = 3)   │                     │ 
+  │          └─────────────┘                     │ 
+  └──────────────────────────────────────────────┘ 
+``` 
 
-## Project structure
+## Project structure 
 
-```
-.
-├── server/                 # Task 1: minimal web server
-│   ├── server.py
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   └── uv.lock
-├── loadbalancer/           # Task 3: load balancer service
-│   ├── loadbalancer.py
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── uv.lock
-│   └── hashing/            # Task 2: consistent hashing
-│       ├── __init__.py
-│       └── consistent_hash.py
-├── analysis/               # Task 4: performance experiments
-├── tests/
-├── docker-compose.yml
-├── Makefile
-└── README.md
-```
+``` 
+. 
+├── server/                 # Task 1: minimal web server 
+│   ├── server.py 
+│   ├── Dockerfile 
+│   ├── pyproject.toml 
+│   └── uv.lock 
+├── loadbalancer/           # Task 3: load balancer service 
+│   ├── loadbalancer.py 
+│   ├── Dockerfile 
+│   ├── pyproject.toml 
+│   ├── uv.lock 
+│   └── hashing/            # Task 2: consistent hashing 
+│       ├── __init__.py 
+│       └── consistent_hash.py 
+├── analysis/               # Task 4: performance experiments 
+├── tests/ 
+├── docker-compose.yml 
+├── Makefile 
+└── README.md 
+``` 
 
-## Consistent hashing parameters (Task 2)
+## Consistent hashing parameters (Task 2) 
 
-| Parameter | Value |
+| Parameter | Value | 
 |-----------|-------|
 | Server containers (N) | 3 |
 | Total slots (#slots) | 512 |
@@ -104,7 +101,7 @@ It fires **10,000 async requests** (concurrency 100) at the load balancer's
 `/home` endpoint and buckets responses by the replica that answered. Charts land
 in `analysis/figures/`, raw numbers in `analysis/results/summary.json`.
 
-### A-1 — Load distribution at N = 3 (10,000 requests)
+### A-1 - Load distribution at N = 3 (10,000 requests)
 
 ![A-1 default](analysis/figures/a1_default.png)
 
@@ -114,7 +111,7 @@ in `analysis/figures/`, raw numbers in `analysis/results/summary.json`.
 | server3 | 1,107 | 11.1% |
 | server2 |   471 |  4.7% |
 
-**Observation:** the load is severely skewed — one server handles ~84% of
+**Observation:** the load is severely skewed - one server handles ~84% of
 requests. This is *not* a bug; it is a direct consequence of the assignment's
 mandated hash functions. The virtual-node hash `Φ(i,j) = i² + j² + 2j + 25`,
 with server ids 1–3 and j ∈ [0,9), only ever produces positions in the band
@@ -123,7 +120,7 @@ every request that hashes into that empty arc wraps clockwise to the
 lowest-slot owner (server1). With so few, tightly-clustered virtual nodes the
 ring cannot balance the load.
 
-### A-2 — Scalability as N goes 2 → 6 (10,000 requests each)
+### A-2 - Scalability as N goes 2 → 6 (10,000 requests each)
 
 ![A-2 default](analysis/figures/a2_default.png)
 
@@ -139,9 +136,9 @@ ring cannot balance the load.
 **busiest server stays pinned near 7,000–9,500 regardless of N**. Because the
 clustered virtual nodes leave one server owning the huge empty arc, adding more
 replicas barely relieves the hotspot. The implementation therefore does **not
-scale** under the default hash functions — extra capacity sits mostly idle.
+scale** under the default hash functions - extra capacity sits mostly idle.
 
-### A-3 — Failure recovery
+### A-3 - Failure recovery
 
 Killing a replica (`docker kill`) at N = 3, the load balancer's heartbeat loop
 detects the failure and spawns a replacement to restore the pool:
@@ -156,16 +153,16 @@ after:    [server_413f2ae3, server_2a7560eb, server_73cc8731]
 **Observation:** recovery is automatic and fast (well under one heartbeat
 interval here), with the replacement carrying a fresh random hostname. `N` is
 maintained without operator intervention. All endpoints (`/rep`, `/add`, `/rm`,
-`/<path>`) were also exercised — see `tests/` and the PR verification logs.
+`/<path>`) were also exercised - see `tests/` and the PR verification logs.
 
-### A-4 — Modified hash functions
+### A-4 - Modified hash functions
 
 We replace the spec polynomials with multiplicative (Knuth-style) mixing hashes
 that scatter virtual nodes across the **whole** ring (see `spread_request_hash`
 / `spread_virtual_hash`; enable with `HASH_VARIANT=spread`). Repeating A-1 and
 A-2:
 
-A-1 (N=3) — default vs spread:
+A-1 (N=3) - default vs spread:
 
 ![A-4 A-1 comparison](analysis/figures/a4_a1_comparison.png)
 
@@ -175,7 +172,7 @@ A-1 (N=3) — default vs spread:
 | server2 |   471 | 2,819 |
 | server3 | 1,107 | 3,830 |
 
-A-2 — busiest server vs N, default vs spread:
+A-2 - busiest server vs N, default vs spread:
 
 ![A-4 A-2 comparison](analysis/figures/a4_a2_comparison.png)
 
@@ -189,7 +186,7 @@ A-2 — busiest server vs N, default vs spread:
 
 **Observation:** spreading the virtual nodes across the ring transforms the
 behaviour. At N = 3 the load is near-even (~33% each), and the busiest server
-now *tracks the ideal `total/N`* as N grows — i.e. the load balancer finally
+now *tracks the ideal `total/N`* as N grows - that is, the load balancer finally
 scales. The takeaway: consistent hashing only balances well when the hash
 functions distribute virtual nodes uniformly over the ring; the spec's
 polynomials do not, which is exactly what A-4 is designed to reveal.
