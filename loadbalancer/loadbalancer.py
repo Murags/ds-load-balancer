@@ -63,10 +63,7 @@ _lock = asyncio.Lock()
 _client: httpx.AsyncClient | None = None
 _health_task: asyncio.Task | None = None
 
-
-# --------------------------------------------------------------------------- #
 # Helpers
-# --------------------------------------------------------------------------- #
 def _random_hostname() -> str:
     return "server_" + uuid.uuid4().hex[:8]
 
@@ -142,17 +139,14 @@ async def _ensure_n_replicas() -> None:
             continue
         await _spawn_and_register(name)
 
-
-# --------------------------------------------------------------------------- #
 # Health / failure recovery
-# --------------------------------------------------------------------------- #
 async def _recover_dead() -> None:
     """Detect dead replicas and respawn replacements up to the desired count.
 
     The target is `_target_n` (the live desired count, which tracks /add and
     /rm), not the static env `N`.
     """
-    dead = [name for name in ring.servers if not await _is_alive(name)]
+    dead = [name for name in ring.servers if not await _is_alive(name)]  # heartbeat-check every replica
     if not dead:
         return
     async with _lock:
@@ -184,10 +178,7 @@ async def _health_loop() -> None:
         except Exception:  # never let the loop die on a transient error
             pass
 
-
-# --------------------------------------------------------------------------- #
 # Lifespan
-# --------------------------------------------------------------------------- #
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _client, _health_task, _target_n
@@ -212,10 +203,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ds-loadbalancer", lifespan=lifespan)
 
-
-# --------------------------------------------------------------------------- #
 # Management endpoints
-# --------------------------------------------------------------------------- #
 @app.get("/rep")
 async def rep() -> JSONResponse:
     """Return the count and hostnames of the managed replicas."""
@@ -249,7 +237,7 @@ async def add(request: Request) -> JSONResponse:
         chosen = list(hostnames)
         while len(chosen) < n:
             r = _random_hostname()
-            if r not in ring and r not in chosen:
+            if r not in ring and r not in chosen:  # avoid clashing with existing or already-picked names
                 chosen.append(r)
 
         # Add atomically: if any spawn fails, roll back the ones added here.
@@ -298,8 +286,8 @@ async def remove(request: Request) -> JSONResponse:
                 return _error(f"Hostname '{h}' is not a managed replica")
         chosen = list(hostnames)
         # Fill the remainder with randomly-chosen survivors.
-        others = [s for s in ring.servers if s not in chosen]
-        chosen += random.sample(others, n - len(chosen))
+        others = [s for s in ring.servers if s not in chosen]  # replicas not explicitly requested for removal
+        chosen += random.sample(others, n - len(chosen))  # fill up to n with random picks from the rest
         failed: list[str] = []
         for h in chosen:
             ring.remove_server(h)
@@ -315,10 +303,7 @@ async def remove(request: Request) -> JSONResponse:
             )
         return _ok(ring.servers)
 
-
-# --------------------------------------------------------------------------- #
 # Request routing (must be declared last so it doesn't shadow the routes above)
-# --------------------------------------------------------------------------- #
 @app.get("/{path:path}")
 async def route(path: str, request: Request) -> Response:
     """Route a GET request to a replica chosen by the consistent hash ring."""
@@ -326,8 +311,8 @@ async def route(path: str, request: Request) -> Response:
     if not ring.servers:
         return _error("No server replicas available", status_code=503)
 
-    request_id = random.randint(100000, 999999)
-    server = ring.get_server(request_id)
+    request_id = random.randint(100000, 999999)  # arbitrary id, only used as hash input
+    server = ring.get_server(request_id)  # maps the id to a replica via the consistent hash ring
     url = f"http://{server}:{SERVER_PORT}/{path}"
     try:
         resp = await _client.get(url, timeout=10.0)
@@ -336,6 +321,7 @@ async def route(path: str, request: Request) -> Response:
         return _error(f"replica '{server}' is unreachable", status_code=502)
 
     if resp.status_code == 404:
+        # replica is alive but has no handler for this path, not a server failure
         return _error(f"'/{path}' endpoint does not exist in server replicas")
     return Response(
         content=resp.content,
